@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>JA-Toolbox</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      width: 250px;
+      padding: 10px;
+      font-family: Arial, sans-serif;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      background-color: #4285f4;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-top: 12px;
+      font-size: 14px;
+    }
+    button:hover {
+      background-color: #3367d6;
+    }
+    .status {
+      margin-top: 10px;
+      color: #4285f4;
+      font-size: 12px;
+      text-align: center;
+      min-height: 30px;
+    }
+    h2 {
+      color: #333;
+      text-align: center;
+      margin-bottom: 10px;
+    }
+    .description {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 5px;
+    }
+    .button-container {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h2>JA-Toolbox</h2>
+  
+  <div class="button-container">
+    <div>
+      <button id="stripMarkdown">JA-MarkdownStrip</button>
+    </div>
+    
+    <div>
+      <button id="gptPrompt">GPT-Prompt</button>
+    </div>
+    
+    <div>
+      <button id="stripIntro">JA-IntroStrip</button>
+    </div>
+    
+    <div>
+      <button id="stripBonus">JA-BonusStrip</button>
+    </div>
+    
+    <div>
+      <button id="insertGeneral">JA-GeneralText</button>
+    </div>
+
+    <div>
+      <button id="insertLanguage">JA-Language</button>
+    </div>
+  </div>
+  
+  <div id="status" class="status"></div>
+  <script src="popup.js"></script>
+</body>
+</html>
