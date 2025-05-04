@@ -580,6 +580,174 @@ function stripBonusFromActiveElement(bonusText) {
   }
 }
 
+function directBonusStrippingProcess(bonusText) {
+  const iframes = document.querySelectorAll('iframe');
+  for (const iframe of iframes) {
+    try {
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+      if (!iframeDoc) {
+        continue;
+      }
+      const iframeBody = iframeDoc.body;
+      if (iframeBody && (iframeBody.isContentEditable || iframeBody.getAttribute('contenteditable') === 'true')) {
+        const content = iframeBody.textContent || iframeBody.innerHTML;
+        if (content) {
+          iframeBody.innerHTML = stripBonusText(content, bonusText);
+          return true;
+        }
+      }
+      const editableElementsInIframe = iframeDoc.querySelectorAll('[contenteditable="true"]');
+      for (const element of editableElementsInIframe) {
+        const content = element.textContent || element.innerHTML;
+        if (content) {
+          element.innerHTML = stripBonusText(content, bonusText);
+          return true;
+        }
+      }
+      const iframeActive = iframeDoc.activeElement;
+      if (iframeActive && (
+          iframeActive.tagName === 'TEXTAREA' || 
+          iframeActive.tagName === 'INPUT' && iframeActive.type === 'text' ||
+          iframeActive.isContentEditable
+      )) {
+        let content;
+        if (iframeActive.isContentEditable) {
+          content = iframeActive.innerHTML;
+        } else {
+          content = iframeActive.value;
+        }
+        if (content) {
+          const strippedContent = stripBonusText(content, bonusText);
+          if (iframeActive.isContentEditable) {
+            iframeActive.innerHTML = strippedContent;
+          } else {
+            iframeActive.value = strippedContent;
+          }
+          return true;
+        }
+      }
+    } catch (e) {
+      console.error('Error accessing iframe for bonus stripping:', e);
+    }
+  }
+  if (stripBonusFromActiveElement(bonusText)) {
+    return true;
+  }
+  const bodyEditor = document.querySelector('body.input-editor[contenteditable="true"]');
+  if (bodyEditor) {
+    const content = bodyEditor.textContent || bodyEditor.innerHTML;
+    if (content) {
+      bodyEditor.innerHTML = stripBonusText(content, bonusText);
+      return true;
+    }
+  }
+  if (document.body.isContentEditable || document.body.getAttribute('contenteditable') === 'true') {
+    const content = document.body.textContent || document.body.innerHTML;
+    if (content) {
+      document.body.innerHTML = stripBonusText(content, bonusText);
+      return true;
+    }
+  }
+  const editableElements = document.querySelectorAll('[contenteditable="true"]');
+  for (const element of editableElements) {
+    const content = element.textContent || element.innerHTML;
+    if (content) {
+      element.innerHTML = stripBonusText(content, bonusText);
+      return true;
+    }
+  }
+  return false;
+}
+
+function directIntroStrippingProcess(introText) {
+  const iframes = document.querySelectorAll('iframe');
+  for (const iframe of iframes) {
+    try {
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+      if (!iframeDoc) {
+        continue;
+      }
+      const iframeBody = iframeDoc.body;
+      if (iframeBody && (iframeBody.isContentEditable || iframeBody.getAttribute('contenteditable') === 'true')) {
+        const content = iframeBody.textContent || iframeBody.innerHTML;
+        if (content) {
+          iframeBody.innerHTML = stripIntroText(content, introText);
+          return true;
+        }
+      }
+      const editableElementsInIframe = iframeDoc.querySelectorAll('[contenteditable="true"]');
+      for (const element of editableElementsInIframe) {
+        const content = element.textContent || element.innerHTML;
+        if (content) {
+          element.innerHTML = stripIntroText(content, introText);
+          return true;
+        }
+      }
+      const iframeActive = iframeDoc.activeElement;
+      if (iframeActive && (
+          iframeActive.tagName === 'TEXTAREA' || 
+          iframeActive.tagName === 'INPUT' && iframeActive.type === 'text' ||
+          iframeActive.isContentEditable
+      )) {
+        let content;
+        if (iframeActive.isContentEditable) {
+          content = iframeActive.innerHTML;
+        } else {
+          content = iframeActive.value;
+        }
+        if (content) {
+          const strippedContent = stripIntroText(content, introText);
+          if (iframeActive.isContentEditable) {
+            iframeActive.innerHTML = strippedContent;
+          } else {
+            iframeActive.value = strippedContent;
+          }
+          return true;
+        }
+      }
+    } catch (e) {
+      console.error('Error accessing iframe for intro stripping:', e);
+    }
+  }
+  if (stripIntroFromActiveElement(introText)) {
+    return true;
+  }
+  const bodyEditor = document.querySelector('body.input-editor[contenteditable="true"]');
+  if (bodyEditor) {
+    const content = bodyEditor.textContent || bodyEditor.innerHTML;
+    if (content) {
+      bodyEditor.innerHTML = stripIntroText(content, introText);
+      return true;
+    }
+  }
+  if (document.body.isContentEditable || document.body.getAttribute('contenteditable') === 'true') {
+    const content = document.body.textContent || document.body.innerHTML;
+    if (content) {
+      document.body.innerHTML = stripIntroText(content, introText);
+      return true;
+    }
+  }
+  const editableElements = document.querySelectorAll('[contenteditable="true"]');
+  for (const element of editableElements) {
+    const content = element.textContent || element.innerHTML;
+    if (content) {
+      element.innerHTML = stripIntroText(content, introText);
+      return true;
+    }
+  }
+  return false;
+}
+
+function directContentEditableBodyProcess(introText, bonusText) {
+  if (bonusText) {
+    return directBonusStrippingProcess(bonusText);
+  }
+  if (introText) {
+    return directIntroStrippingProcess(introText);
+  }
+  return false;
+}
+
 chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
   if (request.action === 'stripMarkdown') {
     try {
