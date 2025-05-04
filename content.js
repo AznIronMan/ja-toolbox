@@ -1,5 +1,22 @@
+function cleanupElement(element) {
+  if (element && element.parentNode) {
+    element.parentNode.removeChild(element);
+    return true;
+  }
+  return false;
+}
 
-console.log('Markdown Stripper content script loaded');
+function createTempElement(tag = 'div') {
+  const element = document.createElement(tag);
+  document.body.appendChild(element);
+  return {
+    element: element,
+    cleanup: function() {
+      return cleanupElement(element);
+    }
+  };
+}
+
 function stripMarkdown(text) {
   if (!text) return '';
   const paragraphs = text.split(/\n\s*\n/);
@@ -146,25 +163,27 @@ function insertTextAtCursor(element, text) {
 
 function stripIntroText(content, introText) {
   if (!content || !introText) return content;
-  const div = document.createElement('div');
-  div.innerHTML = introText;
-  const cleanIntroText = div.textContent;
+  const tempIntroDiv = createTempElement();
+  tempIntroDiv.element.innerHTML = introText;
+  const cleanIntroText = tempIntroDiv.element.textContent;
   const isHTML = /<[^>]*>/g.test(content);
   if (isHTML) {
-    div.innerHTML = content;
-    let textContent = div.textContent;
+    const tempContentDiv = createTempElement();
+    tempContentDiv.element.innerHTML = content;
+    let textContent = tempContentDiv.element.textContent;
+    
     if (textContent.startsWith(cleanIntroText)) {
       textContent = textContent.slice(cleanIntroText.length).trim();
       let currentIndex = 0;
       const walker = document.createTreeWalker(
-        div, 
+        tempContentDiv.element, 
         NodeFilter.SHOW_TEXT, 
         null, 
         false
       );
       let introRemaining = cleanIntroText.length;
-      while (walker.nextNode()) {
-        const node = walker.currentNode;
+      let node;
+      while ((node = walker.nextNode())) {
         const nodeText = node.nodeValue;
         if (introRemaining <= 0) break;
         if (introRemaining >= nodeText.length) {
@@ -175,18 +194,26 @@ function stripIntroText(content, introText) {
           break;
         }
       }
-      walker.currentNode = null;
-      if (currentIndex > 0 && currentIndex < content.length) {
-        return content.substring(currentIndex).trim();
+      if (walker.currentNode) {
+        walker.currentNode = null;
       }
-      return content;
+      tempIntroDiv.cleanup();
+      let result = content;
+      if (currentIndex > 0 && currentIndex < content.length) {
+        result = content.substring(currentIndex).trim();
+      }
+      tempContentDiv.cleanup();
+      return result;
     }
+    tempIntroDiv.cleanup();
+    tempContentDiv.cleanup();
     return content;
   } else {
-    if (content.startsWith(cleanIntroText)) {
-      return content.slice(cleanIntroText.length).trim();
-    }
-    return content;
+    const result = content.startsWith(cleanIntroText) ? 
+                   content.slice(cleanIntroText.length).trim() : 
+                   content;
+    tempIntroDiv.cleanup();
+    return result;
   }
 }
 
@@ -278,29 +305,37 @@ function stripIntroFromActiveElement(introText) {
       document.querySelector('.ProseMirror'),
       document.querySelector('.input-editor')
     ].filter(Boolean);
+    
     for (const editor of possibleEditors) {
       const selection = window.getSelection();
-      if (selection && selection.rangeCount > 0 && 
-          editor.contains(selection.anchorNode) && 
-          selection.toString().trim() !== '') {
-        const range = selection.getRangeAt(0);
-        const selectedText = selection.toString();
-        const strippedSelection = stripIntroText(selectedText, introText);
-        if (selectedText !== strippedSelection) {
-          range.deleteContents();
-          const textNode = document.createTextNode(strippedSelection);
-          range.insertNode(textNode);
-          range.selectNodeContents(textNode);
-          selection.removeAllRanges();
-          selection.addRange(range);
-          return true;
+      try {
+        if (selection && selection.rangeCount > 0 && 
+            editor.contains(selection.anchorNode) && 
+            selection.toString().trim() !== '') {
+          const range = selection.getRangeAt(0);
+          const selectedText = selection.toString();
+          const strippedSelection = stripIntroText(selectedText, introText);
+          if (selectedText !== strippedSelection) {
+            range.deleteContents();
+            const textNode = document.createTextNode(strippedSelection);
+            range.insertNode(textNode);
+            range.selectNodeContents(textNode);
+            selection.removeAllRanges();
+            selection.addRange(range);
+            return true;
+          }
+        } else {
+          const originalContent = editor.innerHTML;
+          const modifiedContent = stripIntroText(originalContent, introText);
+          if (originalContent !== modifiedContent) {
+            editor.innerHTML = modifiedContent;
+            return true;
+          }
         }
-      } else {
-        const originalContent = editor.innerHTML;
-        const modifiedContent = stripIntroText(originalContent, introText);
-        if (originalContent !== modifiedContent) {
-          editor.innerHTML = modifiedContent;
-          return true;
+      } catch (e) {
+        console.error('Error in selection processing:', e);
+        if (selection) {
+          selection.removeAllRanges();
         }
       }
     }
@@ -313,13 +348,14 @@ function stripIntroFromActiveElement(introText) {
 
 function stripBonusText(content, bonusText) {
   if (!content || !bonusText) return content;
-  const div = document.createElement('div');
-  div.innerHTML = bonusText;
-  const cleanBonusText = div.textContent;
+  const tempBonusDiv = createTempElement();
+  tempBonusDiv.element.innerHTML = bonusText;
+  const cleanBonusText = tempBonusDiv.element.textContent;
   const isHTML = /<[^>]*>/g.test(content);
   if (isHTML) {
-    div.innerHTML = content;
-    let textContent = div.textContent;
+    const tempContentDiv = createTempElement();
+    tempContentDiv.element.innerHTML = content;
+    let textContent = tempContentDiv.element.textContent;
     const bonusIndex = textContent.indexOf(cleanBonusText);
     if (bonusIndex >= 0) {
       const beforeBonus = textContent.substring(0, bonusIndex);
@@ -329,15 +365,15 @@ function stripBonusText(content, bonusText) {
       let currentTextLength = 0;
       let bonusFound = false;
       const walker = document.createTreeWalker(
-        div, 
+        tempContentDiv.element, 
         NodeFilter.SHOW_TEXT, 
         null, 
         false
       );
       let bonusStartIndex = -1;
       let bonusEndIndex = -1;
-      while (walker.nextNode() && !bonusFound) {
-        const node = walker.currentNode;
+      let node;
+      while ((node = walker.nextNode()) && !bonusFound) {
         const nodeText = node.nodeValue;
         if (currentTextLength <= bonusIndex && bonusIndex < currentTextLength + nodeText.length) {
           const relativeStart = bonusIndex - currentTextLength;
@@ -349,8 +385,8 @@ function stripBonusText(content, bonusText) {
           } else {
             remainingBonusLength -= (nodeText.length - relativeStart);
             currentIndex += nodeText.length;
-            while (walker.nextNode() && remainingBonusLength > 0) {
-              const nextNode = walker.currentNode;
+            let nextNode;
+            while ((nextNode = walker.nextNode()) && remainingBonusLength > 0) {
               const nextNodeText = nextNode.nodeValue;
               if (remainingBonusLength <= nextNodeText.length) {
                 bonusEndIndex = currentIndex + remainingBonusLength;
@@ -366,18 +402,27 @@ function stripBonusText(content, bonusText) {
         currentTextLength += nodeText.length;
         currentIndex += nodeText.length;
       }
-      walker.currentNode = null;
-      if (bonusFound && bonusStartIndex >= 0 && bonusEndIndex > bonusStartIndex) {
-        return content.substring(0, bonusStartIndex) + content.substring(bonusEndIndex);
+      if (walker.currentNode) {
+        walker.currentNode = null;
       }
+      tempBonusDiv.cleanup();
+      let result = content;
+      if (bonusFound && bonusStartIndex >= 0 && bonusEndIndex > bonusStartIndex) {
+        result = content.substring(0, bonusStartIndex) + content.substring(bonusEndIndex);
+      }
+      tempContentDiv.cleanup();
+      return result;
     }
+    tempBonusDiv.cleanup();
+    tempContentDiv.cleanup();
     return content;
   } else {
     const bonusIndex = content.indexOf(cleanBonusText);
-    if (bonusIndex >= 0) {
-      return content.substring(0, bonusIndex) + content.substring(bonusIndex + cleanBonusText.length);
-    }
-    return content;
+    const result = bonusIndex >= 0 ? 
+                  content.substring(0, bonusIndex) + content.substring(bonusIndex + cleanBonusText.length) : 
+                  content;
+    tempBonusDiv.cleanup();
+    return result;
   }
 }
 
@@ -389,7 +434,6 @@ function stripBonusFromActiveElement(bonusText) {
       const start = activeElement.selectionStart;
       const end = activeElement.selectionEnd;
       const fullValue = activeElement.value;
-      
       
       if (start !== end) {
         const selectedText = fullValue.substring(start, end);
@@ -414,53 +458,68 @@ function stripBonusFromActiveElement(bonusText) {
     else if (activeElement.isContentEditable || 
              activeElement.getAttribute('contenteditable') === 'true') {
       const selection = window.getSelection();
-      if (selection && selection.rangeCount > 0 && selection.toString().trim() !== '') {
-        const range = selection.getRangeAt(0);
-        const selectedText = selection.toString();
-        const strippedSelection = stripBonusText(selectedText, bonusText);
-        if (selectedText !== strippedSelection) {
-          range.deleteContents();
-          const textNode = document.createTextNode(strippedSelection);
-          range.insertNode(textNode);
-          range.selectNodeContents(textNode);
-          selection.removeAllRanges();
-          selection.addRange(range);
-          return true;
+      try {
+        if (selection && selection.rangeCount > 0 && selection.toString().trim() !== '') {
+          const range = selection.getRangeAt(0);
+          const selectedText = selection.toString();
+          const strippedSelection = stripBonusText(selectedText, bonusText);
+          if (selectedText !== strippedSelection) {
+            range.deleteContents();
+            const textNode = document.createTextNode(strippedSelection);
+            range.insertNode(textNode);
+            range.selectNodeContents(textNode);
+            selection.removeAllRanges();
+            selection.addRange(range);
+            return true;
+          }
+        } else {
+          const originalContent = activeElement.innerHTML;
+          const modifiedContent = stripBonusText(originalContent, bonusText);
+          if (originalContent !== modifiedContent) {
+            activeElement.innerHTML = modifiedContent;
+            return true;
+          }
         }
-      } else {
-        const originalContent = activeElement.innerHTML;
-        const modifiedContent = stripBonusText(originalContent, bonusText);
-        if (originalContent !== modifiedContent) {
-          activeElement.innerHTML = modifiedContent;
-          return true;
+      } catch (e) {
+        console.error('Error in selection processing:', e);
+        if (selection) {
+          selection.removeAllRanges();
         }
       }
     }
     else if (activeElement.tagName === 'BODY' && (document.body.isContentEditable || 
         document.body.getAttribute('contenteditable') === 'true')) {
       const selection = window.getSelection();
-      if (selection && selection.rangeCount > 0 && selection.toString().trim() !== '') {
-        const range = selection.getRangeAt(0);
-        const selectedText = selection.toString();
-        const strippedSelection = stripBonusText(selectedText, bonusText);
-        if (selectedText !== strippedSelection) {
-          range.deleteContents();
-          const textNode = document.createTextNode(strippedSelection);
-          range.insertNode(textNode);
-          range.selectNodeContents(textNode);
-          selection.removeAllRanges();
-          selection.addRange(range);
-          return true;
+      try {
+        if (selection && selection.rangeCount > 0 && selection.toString().trim() !== '') {
+          const range = selection.getRangeAt(0);
+          const selectedText = selection.toString();
+          const strippedSelection = stripBonusText(selectedText, bonusText);
+          if (selectedText !== strippedSelection) {
+            range.deleteContents();
+            const textNode = document.createTextNode(strippedSelection);
+            range.insertNode(textNode);
+            range.selectNodeContents(textNode);
+            selection.removeAllRanges();
+            selection.addRange(range);
+            return true;
+          }
+        } else {
+          const originalContent = document.body.innerHTML;
+          const modifiedContent = stripBonusText(originalContent, bonusText);
+          if (originalContent !== modifiedContent) {
+            document.body.innerHTML = modifiedContent;
+            return true;
+          }
         }
-      } else {
-        const originalContent = document.body.innerHTML;
-        const modifiedContent = stripBonusText(originalContent, bonusText);
-        if (originalContent !== modifiedContent) {
-          document.body.innerHTML = modifiedContent;
-          return true;
+      } catch (e) {
+        console.error('Error in selection processing:', e);
+        if (selection) {
+          selection.removeAllRanges();
         }
       }
     }
+    
     const possibleEditors = [
       document.body.isContentEditable || document.body.getAttribute('contenteditable') === 'true' ? document.body : null,
       document.querySelector('body.input-editor[contenteditable="true"]'),
@@ -471,35 +530,52 @@ function stripBonusFromActiveElement(bonusText) {
       document.querySelector('.ProseMirror'),
       document.querySelector('.input-editor')
     ].filter(Boolean);
+    
     for (const editor of possibleEditors) {
       const selection = window.getSelection();
-      if (selection && selection.rangeCount > 0 && 
-          editor.contains(selection.anchorNode) && 
-          selection.toString().trim() !== '') {
-        const range = selection.getRangeAt(0);
-        const selectedText = selection.toString();
-        const strippedSelection = stripBonusText(selectedText, bonusText);
-        if (selectedText !== strippedSelection) {
-          range.deleteContents();
-          const textNode = document.createTextNode(strippedSelection);
-          range.insertNode(textNode);
-          range.selectNodeContents(textNode);
-          selection.removeAllRanges();
-          selection.addRange(range);
-          return true;
+      try {
+        if (selection && selection.rangeCount > 0 && 
+            editor.contains(selection.anchorNode) && 
+            selection.toString().trim() !== '') {
+          const range = selection.getRangeAt(0);
+          const selectedText = selection.toString();
+          const strippedSelection = stripBonusText(selectedText, bonusText);
+          if (selectedText !== strippedSelection) {
+            range.deleteContents();
+            const textNode = document.createTextNode(strippedSelection);
+            range.insertNode(textNode);
+            range.selectNodeContents(textNode);
+            selection.removeAllRanges();
+            selection.addRange(range);
+            return true;
+          }
+        } else {
+          const originalContent = editor.innerHTML;
+          const modifiedContent = stripBonusText(originalContent, bonusText);
+          if (originalContent !== modifiedContent) {
+            editor.innerHTML = modifiedContent;
+            return true;
+          }
         }
-      } else {
-        const originalContent = editor.innerHTML;
-        const modifiedContent = stripBonusText(originalContent, bonusText);
-        if (originalContent !== modifiedContent) {
-          editor.innerHTML = modifiedContent;
-          return true;
+      } catch (e) {
+        console.error('Error in selection processing:', e);
+        if (selection) {
+          selection.removeAllRanges();
         }
       }
     }
+    
     return false;
   } catch (e) {
     console.error('Error in stripBonusFromActiveElement:', e);
+    try {
+      const selection = window.getSelection();
+      if (selection) {
+        selection.removeAllRanges();
+      }
+    } catch (selectionError) {
+      console.error('Error cleaning up selection:', selectionError);
+    }
     return false;
   }
 }
@@ -573,9 +649,12 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
   }
   return true; 
 });
-
+let hasProcessedFrame = false;
 if (window !== window.top) {
-  setTimeout(() => {
-    processContentEditableInFrame();
-  }, 100);
+  if (!hasProcessedFrame) {
+    hasProcessedFrame = true;
+    setTimeout(() => {
+      processContentEditableInFrame();
+    }, 100);
+  }
 } 
