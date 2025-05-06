@@ -8,11 +8,20 @@ function cleanupElement(element) {
 
 function createTempElement(tag = 'div') {
   const element = document.createElement(tag);
-  document.body.appendChild(element);
+  const fragment = document.createDocumentFragment();
+  fragment.appendChild(element);
+  element.setAttribute('data-tmp-element', 'true');
   return {
     element: element,
     cleanup: function() {
-      return cleanupElement(element);
+      while (element.firstChild) {
+        element.removeChild(element.firstChild);
+      }
+      if (element.parentNode) {
+        element.parentNode.removeChild(element);
+      }
+      element.innerHTML = '';
+      return true;
     }
   };
 }
@@ -114,16 +123,7 @@ function insertTextIntoActiveElement(text) {
       insertTextAtCursor(activeElement, text);
       return true;
     }
-    const possibleEditors = [
-      document.body.isContentEditable || document.body.getAttribute('contenteditable') === 'true' ? document.body : null,
-      document.querySelector('body.input-editor[contenteditable="true"]'),
-      document.querySelector('[role="textbox"]'),
-      document.querySelector('[contenteditable="true"]'),
-      document.querySelector('.CodeMirror'),
-      document.querySelector('.ql-editor'),
-      document.querySelector('.ProseMirror'),
-      document.querySelector('.input-editor')
-    ].filter(Boolean);
+    const possibleEditors = getPossibleEditors();
     for (const editor of possibleEditors) {
       insertTextAtCursor(editor, text);
       return true;
@@ -183,20 +183,24 @@ function stripIntroText(content, introText) {
       );
       let introRemaining = cleanIntroText.length;
       let node;
-      while ((node = walker.nextNode())) {
-        const nodeText = node.nodeValue;
-        if (introRemaining <= 0) break;
-        if (introRemaining >= nodeText.length) {
-          introRemaining -= nodeText.length;
-          currentIndex += nodeText.length;
-        } else {
-          currentIndex += introRemaining;
-          break;
+      try {
+        while ((node = walker.nextNode())) {
+          const nodeText = node.nodeValue;
+          if (introRemaining <= 0) break;
+          if (introRemaining >= nodeText.length) {
+            introRemaining -= nodeText.length;
+            currentIndex += nodeText.length;
+          } else {
+            currentIndex += introRemaining;
+            break;
+          }
+        }
+      } finally {
+        if (walker.currentNode) {
+          walker.currentNode = null;
         }
       }
-      if (walker.currentNode) {
-        walker.currentNode = null;
-      }
+      
       tempIntroDiv.cleanup();
       let result = content;
       if (currentIndex > 0 && currentIndex < content.length) {
@@ -295,16 +299,7 @@ function stripIntroFromActiveElement(introText) {
         }
       }
     }
-    const possibleEditors = [
-      document.body.isContentEditable || document.body.getAttribute('contenteditable') === 'true' ? document.body : null,
-      document.querySelector('body.input-editor[contenteditable="true"]'),
-      document.querySelector('[role="textbox"]'),
-      document.querySelector('[contenteditable="true"]'),
-      document.querySelector('.CodeMirror'),
-      document.querySelector('.ql-editor'),
-      document.querySelector('.ProseMirror'),
-      document.querySelector('.input-editor')
-    ].filter(Boolean);
+    const possibleEditors = getPossibleEditors();
     
     for (const editor of possibleEditors) {
       const selection = window.getSelection();
@@ -373,38 +368,42 @@ function stripBonusText(content, bonusText) {
       let bonusStartIndex = -1;
       let bonusEndIndex = -1;
       let node;
-      while ((node = walker.nextNode()) && !bonusFound) {
-        const nodeText = node.nodeValue;
-        if (currentTextLength <= bonusIndex && bonusIndex < currentTextLength + nodeText.length) {
-          const relativeStart = bonusIndex - currentTextLength;
-          bonusStartIndex = currentIndex + relativeStart;
-          let remainingBonusLength = cleanBonusText.length;
-          if (relativeStart + remainingBonusLength <= nodeText.length) {
-            bonusEndIndex = bonusStartIndex + remainingBonusLength;
-            bonusFound = true;
-          } else {
-            remainingBonusLength -= (nodeText.length - relativeStart);
-            currentIndex += nodeText.length;
-            let nextNode;
-            while ((nextNode = walker.nextNode()) && remainingBonusLength > 0) {
-              const nextNodeText = nextNode.nodeValue;
-              if (remainingBonusLength <= nextNodeText.length) {
-                bonusEndIndex = currentIndex + remainingBonusLength;
-                bonusFound = true;
-                break;
-              } else {
-                remainingBonusLength -= nextNodeText.length;
-                currentIndex += nextNodeText.length;
+      try {
+        while ((node = walker.nextNode()) && !bonusFound) {
+          const nodeText = node.nodeValue;
+          if (currentTextLength <= bonusIndex && bonusIndex < currentTextLength + nodeText.length) {
+            const relativeStart = bonusIndex - currentTextLength;
+            bonusStartIndex = currentIndex + relativeStart;
+            let remainingBonusLength = cleanBonusText.length;
+            if (relativeStart + remainingBonusLength <= nodeText.length) {
+              bonusEndIndex = bonusStartIndex + remainingBonusLength;
+              bonusFound = true;
+            } else {
+              remainingBonusLength -= (nodeText.length - relativeStart);
+              currentIndex += nodeText.length;
+              let nextNode;
+              while ((nextNode = walker.nextNode()) && remainingBonusLength > 0) {
+                const nextNodeText = nextNode.nodeValue;
+                if (remainingBonusLength <= nextNodeText.length) {
+                  bonusEndIndex = currentIndex + remainingBonusLength;
+                  bonusFound = true;
+                  break;
+                } else {
+                  remainingBonusLength -= nextNodeText.length;
+                  currentIndex += nextNodeText.length;
+                }
               }
             }
           }
+          currentTextLength += nodeText.length;
+          currentIndex += nodeText.length;
         }
-        currentTextLength += nodeText.length;
-        currentIndex += nodeText.length;
+      } finally {
+        if (walker.currentNode) {
+          walker.currentNode = null;
+        }
       }
-      if (walker.currentNode) {
-        walker.currentNode = null;
-      }
+      
       tempBonusDiv.cleanup();
       let result = content;
       if (bonusFound && bonusStartIndex >= 0 && bonusEndIndex > bonusStartIndex) {
@@ -520,16 +519,7 @@ function stripBonusFromActiveElement(bonusText) {
       }
     }
     
-    const possibleEditors = [
-      document.body.isContentEditable || document.body.getAttribute('contenteditable') === 'true' ? document.body : null,
-      document.querySelector('body.input-editor[contenteditable="true"]'),
-      document.querySelector('[role="textbox"]'),
-      document.querySelector('[contenteditable="true"]'),
-      document.querySelector('.CodeMirror'),
-      document.querySelector('.ql-editor'),
-      document.querySelector('.ProseMirror'),
-      document.querySelector('.input-editor')
-    ].filter(Boolean);
+    const possibleEditors = getPossibleEditors();
     
     for (const editor of possibleEditors) {
       const selection = window.getSelection();
@@ -748,6 +738,44 @@ function directContentEditableBodyProcess(introText, bonusText) {
   return false;
 }
 
+function getPossibleEditors() {
+  const possibleEditors = [
+    document.body.isContentEditable || document.body.getAttribute('contenteditable') === 'true' ? document.body : null,
+    document.querySelector('body.input-editor[contenteditable="true"]'),
+    document.querySelector('[role="textbox"]'),
+    document.querySelector('[contenteditable="true"]'),
+    document.querySelector('.CodeMirror'),
+    document.querySelector('.ql-editor'),
+    document.querySelector('.ProseMirror'),
+    document.querySelector('.input-editor')
+  ].filter(Boolean);
+  
+  return possibleEditors;
+}
+
+function setupCleanupHandlers() {
+  const cleanupSelections = () => {
+    try {
+      const selection = window.getSelection();
+      if (selection) {
+        selection.removeAllRanges();
+      }
+    } catch (e) {
+      console.error('Error cleaning up selections:', e);
+    }
+  };
+  window.addEventListener('blur', cleanupSelections, { passive: true });
+  window.addEventListener('unload', cleanupSelections, { once: true });
+  window.addEventListener('unload', () => {
+    const allCreatedElements = document.querySelectorAll('[data-tmp-element]');
+    allCreatedElements.forEach(el => {
+      if (el && el.parentNode) {
+        el.parentNode.removeChild(el);
+      }
+    });
+  }, { once: true });
+}
+setupCleanupHandlers();
 chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
   if (request.action === 'stripMarkdown') {
     try {
@@ -821,8 +849,18 @@ let hasProcessedFrame = false;
 if (window !== window.top) {
   if (!hasProcessedFrame) {
     hasProcessedFrame = true;
-    setTimeout(() => {
-      processContentEditableInFrame();
+    const timeoutId = setTimeout(() => {
+      try {
+        processContentEditableInFrame();
+      } catch (e) {
+        console.error('Error in delayed frame processing:', e);
+      } finally {
+        hasProcessedFrame = true;
+        clearTimeout(timeoutId);
+      }
     }, 100);
+    window.addEventListener('unload', () => {
+      clearTimeout(timeoutId);
+    }, { once: true });
   }
 } 
